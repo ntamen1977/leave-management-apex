@@ -30,7 +30,7 @@ jobs:
       - name: Check SQLcl
         shell: powershell
         run: |
-          sql -version
+          & "D:\AGL\tools\sqlcl\bin\sql.exe" -version
 
       - name: Check Oracle connection
         shell: powershell
@@ -52,7 +52,10 @@ jobs:
           EXIT SUCCESS
           "@ | Out-File -Encoding ascii connection_test.sql
 
-          sql -s "$env:ORACLE_USER/$env:ORACLE_PASSWORD@$env:ORACLE_CONNECT_STRING" "@connection_test.sql"
+          & "D:\AGL\tools\sqlcl\bin\sql.exe" `
+            -s `
+            "$env:ORACLE_USER/$env:ORACLE_PASSWORD@$env:ORACLE_CONNECT_STRING" `
+            "@connection_test.sql"
 
       - name: Run TEST_PKG_LEAVE_MEDIUM
         shell: powershell
@@ -62,6 +65,7 @@ jobs:
           ORACLE_CONNECT_STRING: ${{ secrets.ORACLE_CONNECT_STRING }}
 
         run: |
-          sql -s `
+          & "D:\AGL\tools\sqlcl\bin\sql.exe" `
+            -s `
             "$env:ORACLE_USER/$env:ORACLE_PASSWORD@$env:ORACLE_CONNECT_STRING" `
             "@scripts/ci/run_tests.sql"
