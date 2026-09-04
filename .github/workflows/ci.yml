@@ -1,3 +1,4 @@
+```yaml
 name: Oracle APEX PL/SQL CI
 
 on:
@@ -22,50 +23,155 @@ jobs:
 
     timeout-minutes: 10
 
+    env:
+      JAVA_HOME: "C:\\Program Files\\Java\\jdk-21.0.12.1"
+      SQLCL_HOME: "D:\\AGL\\tools\\sqlcl\\bin"
+      ORACLE_USER: ${{ secrets.ORACLE_USER }}
+      ORACLE_PASSWORD: ${{ secrets.ORACLE_PASSWORD }}
+      ORACLE_CONNECT_STRING: ${{ secrets.ORACLE_CONNECT_STRING }}
+
     steps:
 
+      # ==========================================================
+      # 1. RECUPERATION DU CODE DE LA BRANCHE / PULL REQUEST
+      # ==========================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check SQLcl
+
+      # ==========================================================
+      # 2. VERIFICATION JAVA 21 ET SQLCL
+      # ==========================================================
+      - name: Check Java and SQLcl
         shell: powershell
         run: |
-          & "D:\AGL\tools\sqlcl\bin\sql.exe" -version
+          $env:PATH = "$env:JAVA_HOME\bin;$env:SQLCL_HOME;$env:PATH"
 
+          Write-Host "============================================="
+          Write-Host "JAVA"
+          Write-Host "============================================="
+
+          Write-Host "JAVA_HOME = $env:JAVA_HOME"
+          java -version
+
+          Write-Host ""
+          Write-Host "============================================="
+          Write-Host "SQLCL"
+          Write-Host "============================================="
+
+          & "$env:SQLCL_HOME\sql.exe" -version
+
+
+      # ==========================================================
+      # 3. VERIFICATION DES SECRETS
+      # ==========================================================
+      - name: Check CI configuration
+        shell: powershell
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:ORACLE_USER)) {
+              throw "ORACLE_USER secret is missing."
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:ORACLE_PASSWORD)) {
+              throw "ORACLE_PASSWORD secret is missing."
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:ORACLE_CONNECT_STRING)) {
+              throw "ORACLE_CONNECT_STRING secret is missing."
+          }
+
+          Write-Host "Oracle CI configuration is present."
+          Write-Host "Oracle user: $env:ORACLE_USER"
+          Write-Host "Oracle connect string: $env:ORACLE_CONNECT_STRING"
+
+
+      # ==========================================================
+      # 4. TEST DE CONNEXION A ORACLE
+      # ==========================================================
       - name: Check Oracle connection
         shell: powershell
-        env:
-          ORACLE_USER: ${{ secrets.ORACLE_USER }}
-          ORACLE_PASSWORD: ${{ secrets.ORACLE_PASSWORD }}
-          ORACLE_CONNECT_STRING: ${{ secrets.ORACLE_CONNECT_STRING }}
-
         run: |
+          $env:PATH = "$env:JAVA_HOME\bin;$env:SQLCL_HOME;$env:PATH"
+
           @"
+          SET HEADING ON
+          SET FEEDBACK ON
+          SET VERIFY OFF
+
           WHENEVER SQLERROR EXIT SQL.SQLCODE
           WHENEVER OSERROR EXIT FAILURE
 
+          PROMPT =============================================
+          PROMPT ORACLE CONNECTION TEST
+          PROMPT =============================================
+
           SELECT
-              USER,
-              SYS_CONTEXT('USERENV','DB_NAME')
+              USER AS connected_user,
+              SYS_CONTEXT('USERENV', 'DB_NAME') AS database_name,
+              SYS_CONTEXT('USERENV', 'CON_NAME') AS container_name
           FROM dual;
 
           EXIT SUCCESS
-          "@ | Out-File -Encoding ascii connection_test.sql
+          "@ | Out-File -FilePath connection_test.sql -Encoding ascii
 
-          & "D:\AGL\tools\sqlcl\bin\sql.exe" `
+          & "$env:SQLCL_HOME\sql.exe" `
             -s `
             "$env:ORACLE_USER/$env:ORACLE_PASSWORD@$env:ORACLE_CONNECT_STRING" `
             "@connection_test.sql"
 
+          if ($LASTEXITCODE -ne 0) {
+              throw "Oracle connection test failed with exit code $LASTEXITCODE."
+          }
+
+
+      # ==========================================================
+      # 5. VERIFICATION DES FICHIERS CI
+      # ==========================================================
+      - name: Check test files
+        shell: powershell
+        run: |
+          if (-not (Test-Path "scripts\ci\run_tests.sql")) {
+              throw "Missing file: scripts\ci\run_tests.sql"
+          }
+
+          if (-not (Test-Path "database\tests\medium\test_pkg_leave_medium.sql")) {
+              throw "Missing file: database\tests\medium\test_pkg_leave_medium.sql"
+          }
+
+          Write-Host "Required CI files found."
+
+
+      # ==========================================================
+      # 6. EXECUTION DE TEST_PKG_LEAVE_MEDIUM
+      # ==========================================================
       - name: Run TEST_PKG_LEAVE_MEDIUM
         shell: powershell
-        env:
-          ORACLE_USER: ${{ secrets.ORACLE_USER }}
-          ORACLE_PASSWORD: ${{ secrets.ORACLE_PASSWORD }}
-          ORACLE_CONNECT_STRING: ${{ secrets.ORACLE_CONNECT_STRING }}
-
         run: |
-          & "D:\AGL\tools\sqlcl\bin\sql.exe" `
+          $env:PATH = "$env:JAVA_HOME\bin;$env:SQLCL_HOME;$env:PATH"
+
+          Write-Host "============================================="
+          Write-Host "RUNNING TEST_PKG_LEAVE_MEDIUM"
+          Write-Host "============================================="
+
+          & "$env:SQLCL_HOME\sql.exe" `
             -s `
             "$env:ORACLE_USER/$env:ORACLE_PASSWORD@$env:ORACLE_CONNECT_STRING" `
             "@scripts/ci/run_tests.sql"
+
+          if ($LASTEXITCODE -ne 0) {
+              throw "utPLSQL execution failed with exit code $LASTEXITCODE."
+          }
+
+
+      # ==========================================================
+      # 7. MESSAGE FINAL
+      # ==========================================================
+      - name: CI completed
+        if: success()
+        shell: powershell
+        run: |
+          Write-Host "============================================="
+          Write-Host "CI SUCCESS"
+          Write-Host "TEST_PKG_LEAVE_MEDIUM completed."
+          Write-Host "============================================="
+```
