@@ -1,0 +1,67 @@
+name: Oracle APEX PL/SQL CI
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+
+  push:
+    branches:
+      - develop
+
+jobs:
+  utplsql-tests:
+
+    name: TEST_PKG_LEAVE_MEDIUM
+
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+
+    timeout-minutes: 10
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check SQLcl
+        shell: powershell
+        run: |
+          sql -version
+
+      - name: Check Oracle connection
+        shell: powershell
+        env:
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+          ORACLE_PASSWORD: ${{ secrets.ORACLE_PASSWORD }}
+          ORACLE_CONNECT_STRING: ${{ secrets.ORACLE_CONNECT_STRING }}
+
+        run: |
+          @"
+          WHENEVER SQLERROR EXIT SQL.SQLCODE
+          WHENEVER OSERROR EXIT FAILURE
+
+          SELECT
+              USER,
+              SYS_CONTEXT('USERENV','DB_NAME')
+          FROM dual;
+
+          EXIT SUCCESS
+          "@ | Out-File -Encoding ascii connection_test.sql
+
+          sql -s "$env:ORACLE_USER/$env:ORACLE_PASSWORD@$env:ORACLE_CONNECT_STRING" "@connection_test.sql"
+
+      - name: Run TEST_PKG_LEAVE_MEDIUM
+        shell: powershell
+        env:
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+          ORACLE_PASSWORD: ${{ secrets.ORACLE_PASSWORD }}
+          ORACLE_CONNECT_STRING: ${{ secrets.ORACLE_CONNECT_STRING }}
+
+        run: |
+          sql -s `
+            "$env:ORACLE_USER/$env:ORACLE_PASSWORD@$env:ORACLE_CONNECT_STRING" `
+            "@scripts/ci/run_tests.sql"
