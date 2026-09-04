@@ -1,152 +1,136 @@
 name: Oracle APEX PL-SQL CI
+
 on:
 pull_request:
 branches:
 - develop
 - main
+
 push:
 branches:
 - develop
 - feature/US-101-approve-request
+
 jobs:
 utplsql-tests:
 name: TEST_PKG_LEAVE_MEDIUM
-    runs-on:
-      - self-hosted
-      - windows
-      - x64
 
-    timeout-minutes: 10
+runs-on:
+  - self-hosted
+  - windows
+  - x64
 
-    env:
-      JAVA_HOME: 'C:\Program Files\Java\jdk-21.0.12.1'
-      SQLCL_HOME: 'D:\AGL\tools\sqlcl\bin'
-      ORACLE_USER: ${{ secrets.ORACLE_USER }}
-      ORACLE_PASSWORD: ${{ secrets.ORACLE_PASSWORD }}
-      ORACLE_CONNECT_STRING: ${{ secrets.ORACLE_CONNECT_STRING }}
+timeout-minutes: 10
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+env:
+  JAVA_HOME: 'C:\Program Files\Java\jdk-21.0.12.1'
+  SQLCL_HOME: 'D:\AGL\tools\sqlcl\bin'
+  ORACLE_USER: ${{ secrets.ORACLE_USER }}
+  ORACLE_PASSWORD: ${{ secrets.ORACLE_PASSWORD }}
+  ORACLE_CONNECT_STRING: ${{ secrets.ORACLE_CONNECT_STRING }}
 
-      - name: Check Java and SQLcl
-        shell: powershell
-        run: |
-          $env:PATH = "$env:JAVA_HOME\bin;$env:SQLCL_HOME;$env:PATH"
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v4
 
-          Write-Host "============================================="
-          Write-Host "JAVA"
-          Write-Host "============================================="
-          Write-Host "JAVA_HOME = $env:JAVA_HOME"
+  - name: Check Java and SQLcl
+    shell: powershell
+    run: |
+      $env:PATH = "$env:JAVA_HOME\bin;$env:SQLCL_HOME;$env:PATH"
 
-          java -version
+      Write-Host "JAVA_HOME=$env:JAVA_HOME"
+      java -version
 
-          if ($LASTEXITCODE -ne 0) {
-              throw "Java validation failed with exit code $LASTEXITCODE."
-          }
+      if ($LASTEXITCODE -ne 0) {
+          throw "Java validation failed with exit code $LASTEXITCODE."
+      }
 
-          Write-Host ""
-          Write-Host "============================================="
-          Write-Host "SQLCL"
-          Write-Host "============================================="
-          Write-Host "SQLCL_HOME = $env:SQLCL_HOME"
+      Write-Host "SQLCL_HOME=$env:SQLCL_HOME"
 
-          & "$env:SQLCL_HOME\sql.exe" -version
+      & "$env:SQLCL_HOME\sql.exe" -version
 
-          if ($LASTEXITCODE -ne 0) {
-              throw "SQLcl validation failed with exit code $LASTEXITCODE."
-          }
+      if ($LASTEXITCODE -ne 0) {
+          throw "SQLcl validation failed with exit code $LASTEXITCODE."
+      }
 
-      - name: Check CI configuration
-        shell: powershell
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:ORACLE_USER)) {
-              throw "ORACLE_USER secret is missing."
-          }
+  - name: Check CI configuration
+    shell: powershell
+    run: |
+      if ([string]::IsNullOrWhiteSpace($env:ORACLE_USER)) {
+          throw "ORACLE_USER secret is missing."
+      }
 
-          if ([string]::IsNullOrWhiteSpace($env:ORACLE_PASSWORD)) {
-              throw "ORACLE_PASSWORD secret is missing."
-          }
+      if ([string]::IsNullOrWhiteSpace($env:ORACLE_PASSWORD)) {
+          throw "ORACLE_PASSWORD secret is missing."
+      }
 
-          if ([string]::IsNullOrWhiteSpace($env:ORACLE_CONNECT_STRING)) {
-              throw "ORACLE_CONNECT_STRING secret is missing."
-          }
+      if ([string]::IsNullOrWhiteSpace($env:ORACLE_CONNECT_STRING)) {
+          throw "ORACLE_CONNECT_STRING secret is missing."
+      }
 
-          Write-Host "Oracle CI configuration is present."
-          Write-Host "Oracle user: $env:ORACLE_USER"
-          Write-Host "Oracle connect string: $env:ORACLE_CONNECT_STRING"
+      Write-Host "Oracle CI configuration is present."
 
-      - name: Check Oracle connection
-        shell: powershell
-        run: |
-          $env:PATH = "$env:JAVA_HOME\bin;$env:SQLCL_HOME;$env:PATH"
+  - name: Check Oracle connection
+    shell: powershell
+    run: |
+      $env:PATH = "$env:JAVA_HOME\bin;$env:SQLCL_HOME;$env:PATH"
 
-          @"
-          SET HEADING ON
-          SET FEEDBACK ON
-          SET VERIFY OFF
+      @"
+      SET HEADING ON
+      SET FEEDBACK ON
+      SET VERIFY OFF
 
-          WHENEVER SQLERROR EXIT SQL.SQLCODE
-          WHENEVER OSERROR EXIT FAILURE
+      WHENEVER SQLERROR EXIT SQL.SQLCODE
+      WHENEVER OSERROR EXIT FAILURE
 
-          PROMPT =============================================
-          PROMPT ORACLE CONNECTION TEST
-          PROMPT =============================================
+      SELECT
+          USER AS connected_user,
+          SYS_CONTEXT('USERENV', 'DB_NAME') AS database_name,
+          SYS_CONTEXT('USERENV', 'CON_NAME') AS container_name
+      FROM dual;
 
-          SELECT
-              USER AS connected_user,
-              SYS_CONTEXT('USERENV', 'DB_NAME') AS database_name,
-              SYS_CONTEXT('USERENV', 'CON_NAME') AS container_name
-          FROM dual;
+      EXIT SUCCESS
+      "@ | Out-File -FilePath connection_test.sql -Encoding ascii
 
-          EXIT SUCCESS
-          "@ | Out-File -FilePath connection_test.sql -Encoding ascii
+      & "$env:SQLCL_HOME\sql.exe" `
+        -s `
+        "$env:ORACLE_USER/$env:ORACLE_PASSWORD@$env:ORACLE_CONNECT_STRING" `
+        "@connection_test.sql"
 
-          & "$env:SQLCL_HOME\sql.exe" `
-            -s `
-            "$env:ORACLE_USER/$env:ORACLE_PASSWORD@$env:ORACLE_CONNECT_STRING" `
-            "@connection_test.sql"
+      if ($LASTEXITCODE -ne 0) {
+          throw "Oracle connection test failed with exit code $LASTEXITCODE."
+      }
 
-          if ($LASTEXITCODE -ne 0) {
-              throw "Oracle connection test failed with exit code $LASTEXITCODE."
-          }
+  - name: Check test files
+    shell: powershell
+    run: |
+      if (-not (Test-Path "scripts\ci\run_tests.sql")) {
+          throw "Missing file: scripts\ci\run_tests.sql"
+      }
 
-      - name: Check test files
-        shell: powershell
-        run: |
-          if (-not (Test-Path "scripts\ci\run_tests.sql")) {
-              throw "Missing file: scripts\ci\run_tests.sql"
-          }
+      if (-not (Test-Path "database\tests\medium\test_pkg_leave_medium.sql")) {
+          throw "Missing file: database\tests\medium\test_pkg_leave_medium.sql"
+      }
 
-          if (-not (Test-Path "database\tests\medium\test_pkg_leave_medium.sql")) {
-              throw "Missing file: database\tests\medium\test_pkg_leave_medium.sql"
-          }
+      Write-Host "Required CI files found."
 
-          Write-Host "Required CI files found."
+  - name: Run TEST_PKG_LEAVE_MEDIUM
+    shell: powershell
+    run: |
+      $env:PATH = "$env:JAVA_HOME\bin;$env:SQLCL_HOME;$env:PATH"
 
-      - name: Run TEST_PKG_LEAVE_MEDIUM
-        shell: powershell
-        run: |
-          $env:PATH = "$env:JAVA_HOME\bin;$env:SQLCL_HOME;$env:PATH"
+      & "$env:SQLCL_HOME\sql.exe" `
+        -s `
+        "$env:ORACLE_USER/$env:ORACLE_PASSWORD@$env:ORACLE_CONNECT_STRING" `
+        "@scripts/ci/run_tests.sql"
 
-          Write-Host "============================================="
-          Write-Host "RUNNING TEST_PKG_LEAVE_MEDIUM"
-          Write-Host "============================================="
+      if ($LASTEXITCODE -ne 0) {
+          throw "utPLSQL execution failed with exit code $LASTEXITCODE."
+      }
 
-          & "$env:SQLCL_HOME\sql.exe" `
-            -s `
-            "$env:ORACLE_USER/$env:ORACLE_PASSWORD@$env:ORACLE_CONNECT_STRING" `
-            "@scripts/ci/run_tests.sql"
-
-          if ($LASTEXITCODE -ne 0) {
-              throw "utPLSQL execution failed with exit code $LASTEXITCODE."
-          }
-
-      - name: CI completed
-        if: success()
-        shell: powershell
-        run: |
-          Write-Host "============================================="
-          Write-Host "CI SUCCESS"
-          Write-Host "TEST_PKG_LEAVE_MEDIUM completed."
-          Write-Host "============================================="
+  - name: CI completed
+    if: success()
+    shell: powershell
+    run: |
+      Write-Host "CI SUCCESS"
+      Write-Host "TEST_PKG_LEAVE_MEDIUM completed."
