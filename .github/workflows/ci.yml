@@ -1,21 +1,16 @@
-```yaml
 name: Oracle APEX PL-SQL CI
-
 on:
-  pull_request:
-    branches:
-      - develop
-      - main
-
-  push:
-    branches:
-      - develop
-      - feature/US-101-approve-request
-
+pull_request:
+branches:
+- develop
+- main
+push:
+branches:
+- develop
+- feature/US-101-approve-request
 jobs:
-  utplsql-tests:
-    name: TEST_PKG_LEAVE_MEDIUM
-
+utplsql-tests:
+name: TEST_PKG_LEAVE_MEDIUM
     runs-on:
       - self-hosted
       - windows
@@ -39,11 +34,28 @@ jobs:
         run: |
           $env:PATH = "$env:JAVA_HOME\bin;$env:SQLCL_HOME;$env:PATH"
 
-          Write-Host "JAVA_HOME=$env:JAVA_HOME"
+          Write-Host "============================================="
+          Write-Host "JAVA"
+          Write-Host "============================================="
+          Write-Host "JAVA_HOME = $env:JAVA_HOME"
+
           java -version
 
-          Write-Host "SQLcl:"
+          if ($LASTEXITCODE -ne 0) {
+              throw "Java validation failed with exit code $LASTEXITCODE."
+          }
+
+          Write-Host ""
+          Write-Host "============================================="
+          Write-Host "SQLCL"
+          Write-Host "============================================="
+          Write-Host "SQLCL_HOME = $env:SQLCL_HOME"
+
           & "$env:SQLCL_HOME\sql.exe" -version
+
+          if ($LASTEXITCODE -ne 0) {
+              throw "SQLcl validation failed with exit code $LASTEXITCODE."
+          }
 
       - name: Check CI configuration
         shell: powershell
@@ -76,6 +88,10 @@ jobs:
 
           WHENEVER SQLERROR EXIT SQL.SQLCODE
           WHENEVER OSERROR EXIT FAILURE
+
+          PROMPT =============================================
+          PROMPT ORACLE CONNECTION TEST
+          PROMPT =============================================
 
           SELECT
               USER AS connected_user,
@@ -113,6 +129,10 @@ jobs:
         run: |
           $env:PATH = "$env:JAVA_HOME\bin;$env:SQLCL_HOME;$env:PATH"
 
+          Write-Host "============================================="
+          Write-Host "RUNNING TEST_PKG_LEAVE_MEDIUM"
+          Write-Host "============================================="
+
           & "$env:SQLCL_HOME\sql.exe" `
             -s `
             "$env:ORACLE_USER/$env:ORACLE_PASSWORD@$env:ORACLE_CONNECT_STRING" `
@@ -126,6 +146,7 @@ jobs:
         if: success()
         shell: powershell
         run: |
+          Write-Host "============================================="
           Write-Host "CI SUCCESS"
           Write-Host "TEST_PKG_LEAVE_MEDIUM completed."
-```
+          Write-Host "============================================="
