@@ -210,6 +210,7 @@ wwv_flow_imp_page.create_page_button(
 ,p_button_template_id=>4072362960822175091
 ,p_button_image_alt=>'Nouvelle demande'
 ,p_button_redirect_url=>'f?p=&APP_ID.:8:&SESSION.::&DEBUG.:8::'
+,p_button_css_classes=>'btn-approve'
 ,p_grid_new_row=>'Y'
 );
 wwv_flow_imp.component_end;
